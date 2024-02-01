@@ -1,0 +1,14 @@
+a0, a1, a2
+
+f and g are executed at compile time
+
+0000000000000630
+
+0000000000000038
+
+He110 World
+0x726c6400
+No
+
+8229
+it's printing the uninitialized value in a2
