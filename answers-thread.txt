@@ -1,0 +1,7 @@
+t0: malloc e0
+t1: malloc e1
+t0: e0 point to bucket[i]
+t1: e1 point to bucket[i]
+t0: update bucket[i] to e0
+t1: update bucket[i] to e1
+e0 is lost
