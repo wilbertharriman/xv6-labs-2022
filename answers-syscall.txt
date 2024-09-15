@@ -1,0 +1,6 @@
+usertrap
+7. This value represents the syscall number for exec (SYS_exec)
+user mode
+lw s3, 0. s3 corresponds to num
+address not valid. scause says "load page fault"
+initcode. pid = 1
