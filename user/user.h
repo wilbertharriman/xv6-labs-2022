@@ -1,3 +1,5 @@
+typedef unsigned long size_t;
+typedef long int off_t;
 struct stat;
 
 // system calls
@@ -22,6 +24,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+void* mmap(void*, size_t, int, int, int, off_t);
+int munmap(void*, size_t);
 
 // ulib.c
 int stat(const char*, struct stat*);

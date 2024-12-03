@@ -5,6 +5,9 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
 
 struct cpu cpus[NCPU];
 
@@ -302,11 +305,28 @@ fork(void)
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
+  struct vma *v;
+  for(i = 0; i < NVMA; i++) {
+    if(p->vmas[i] == 0) continue;
+    if((v = vmaalloc()) == 0) {
+      freeproc(np);
+      release(&np->lock);
+      return -1;
+    }
+    np->vmas[i] = v;
+    v->start = p->vmas[i]->start;
+    v->end = p->vmas[i]->end;
+    v->f = filedup(p->vmas[i]->f);
+    v->perm = p->vmas[i]->perm;
+    v->flags= p->vmas[i]->flags;
+    v->offset = p->vmas[i]->offset;
+  }
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -358,6 +378,16 @@ exit(int status)
       fileclose(f);
       p->ofile[fd] = 0;
     }
+  }
+
+  // Unmap all mapped region
+  struct vma *v;
+  for (int i = 0; i < NVMA; i++) {
+    v = p->vmas[i];
+    if (v == 0)
+      continue;
+    munmap(v, v->start, (v->end - v->start));
+    p->vmas[i] = 0;
   }
 
   begin_op();

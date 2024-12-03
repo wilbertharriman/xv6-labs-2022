@@ -9,6 +9,17 @@ struct file {
   short major;       // FD_DEVICE
 };
 
+struct vma {
+  int used;
+  uint64 start;
+  uint64 end;
+  int len;
+  int perm;
+  int flags;
+  long int offset;
+  struct file *f;
+};
+
 #define major(dev)  ((dev) >> 16 & 0xFFFF)
 #define minor(dev)  ((dev) & 0xFFFF)
 #define	mkdev(m,n)  ((uint)((m)<<16| (n)))

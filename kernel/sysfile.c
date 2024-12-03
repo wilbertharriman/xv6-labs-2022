@@ -503,3 +503,79 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void){
+  struct proc *p = myproc();
+  int len, prot, flags, fd;
+  struct file *f;
+  struct vma *v;
+  long int offset;
+
+  argint(1, &len);
+  argint(2, &prot);
+  argint(3, &flags);
+  argfd(4, &fd, &f);
+  arglong(5, &offset);
+
+  // len may overflow, offset has to be a multiple of PGSIZE
+  if (len < 0 || offset < 0 || offset % PGSIZE != 0)
+    return -1;
+  int perm = 0;
+  if (prot & PROT_WRITE) {
+    if (flags & MAP_SHARED && !f->writable) {
+      return -1;
+    }
+    perm |= PTE_W;
+  }
+  if (prot & PROT_READ)
+    perm |= PTE_R;
+  filedup(f);
+
+  uint64 addr = p->sz;
+
+  for (uint64 a = addr; a < addr+len; a += PGSIZE) {
+    uvmclear(p->pagetable, a);
+  }
+  p->sz += len;
+
+  if ((v = vmaalloc()) == 0 || vmaattach(v) < 0) {
+    uvmunmap(p->pagetable, v->start, (PGROUNDUP(v->end) - v->start) / PGSIZE, 1);
+    fileclose(f);
+    vmarelease(v);
+    p->sz -= len;
+    return -1;
+  }
+
+  v->start= addr;
+  v->end = addr + len;
+  v->f = f;
+  v->perm = perm;
+  v->flags = flags;
+  v->offset = offset;
+
+  return addr;
+}
+
+uint64 sys_munmap(void){
+  // Assumes that this will not punch a hole in the middle of mmap region
+  int free;
+  int idx;
+  uint64 addr;
+  int len;
+  argaddr(0, &addr);
+  argint(1, &len);
+  // len may overflow
+  if (len < 0)
+    return -1;
+
+  if ((idx = vmalookup(addr)) == -1) {
+    return -1;
+  }
+  free = munmap(myproc()->vmas[idx], addr, len);
+  if (free) {
+    myproc()->vmas[idx] = 0;
+  }
+
+  return 0;
+}

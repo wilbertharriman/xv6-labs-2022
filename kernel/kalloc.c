@@ -77,6 +77,6 @@ kalloc(void)
   release(&kmem.lock);
 
   if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+    memset((char*)r, 0, PGSIZE); // fill with junk
   return (void*)r;
 }

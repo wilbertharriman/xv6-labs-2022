@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct vma;
 
 // bio.c
 void            binit(void);
@@ -26,6 +27,13 @@ void            consputc(int);
 int             exec(char*, char**);
 
 // file.c
+void            vmainit(void);
+struct vma*     vmaalloc(void);
+int             vmaattach(struct vma *v);
+void            vmarelease(struct vma*);
+int             vmalookup(uint64);
+int             munmap(struct vma*, uint64, int);
+int             handle_page_fault(uint64);
 struct file*    filealloc(void);
 void            fileclose(struct file*);
 struct file*    filedup(struct file*);
@@ -135,6 +143,7 @@ char*           strncpy(char*, const char*, int);
 
 // syscall.c
 void            argint(int, int*);
+void            arglong(int, long int*);
 int             argstr(int, char*, int);
 void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);

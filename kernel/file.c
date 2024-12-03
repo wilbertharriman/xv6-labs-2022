@@ -12,12 +12,156 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "fcntl.h"
 
 struct devsw devsw[NDEV];
+
+struct {
+  struct spinlock lock;
+  struct vma vma[NVMA];
+} vmatable;
+
 struct {
   struct spinlock lock;
   struct file file[NFILE];
 } ftable;
+
+void
+vmainit(void)
+{
+  initlock(&vmatable.lock, "vmatable");
+}
+
+struct vma*
+vmaalloc(void)
+{
+  struct vma *v;
+  acquire(&vmatable.lock);
+  for(v = vmatable.vma; v < vmatable.vma + NVMA; v++) {
+    if(v->used == 0) {
+      v->used = 1;
+      release (&vmatable.lock);
+      return v;
+    }
+  }
+  release(&vmatable.lock);
+  return 0;
+}
+
+int
+vmaattach(struct vma *v)
+{
+  int i;
+  struct proc *p = myproc();
+  for (i = 0; i < NVMA; i++){
+    if (p->vmas[i] == 0){
+      p->vmas[i] = v;
+      return i;
+    }
+  }
+  return -1;
+}
+
+void
+vmarelease(struct vma *v)
+{
+  acquire(&vmatable.lock);
+  if (v->used == 0) {
+    panic("vmarelease");
+  }
+  v->used = 0;
+  release(&vmatable.lock);
+}
+
+int
+vmalookup(uint64 va)
+{
+  struct proc *p = myproc();
+  struct vma *v;
+  for (int i = 0; i < NVMA; i++) {
+    v = p->vmas[i];
+    if (v == 0) continue;
+    if (va >= v->start && va < v->end)
+      return i;
+  }
+  return -1;
+}
+
+int munmap(struct vma *v, uint64 addr, int len)
+{
+  int free = 0;
+  struct proc *p = myproc();
+  if (v->flags == MAP_SHARED) {
+    // write starting from [addr:addr+len] to file at offset (addr - v->start)
+    int r;
+    int i = 0;
+    uint off = v->offset + (addr - v->start);
+    int write_len = len < (v->f->ip->size - off) ? len : (v->f->ip->size - off);
+    while (i < write_len) {
+      int n1 = write_len - i;
+      if (n1 > PGSIZE)
+        n1 = PGSIZE;
+      pte_t* pte = walk(p->pagetable, addr + i, 0);
+      if (*pte & PTE_V) {
+        begin_op();
+        ilock(v->f->ip);
+        if ((r = writei(v->f->ip, 1, addr + i, off, n1)) > 0)
+          off += r;
+        iunlock(v->f->ip);
+        end_op();
+        if (r != n1) {
+          panic("failed writing to file");
+        }
+      }
+      i += n1;
+    }
+  }
+
+  uint64 startva, endva;
+
+  if (addr == v->start) {
+    if (addr + len == v->end) {
+      startva = v->start;
+      endva = PGROUNDUP(v->end);
+      fileclose(v->f);
+      vmarelease(v);
+      free = 1;
+    } else {
+      startva = v->start;
+      endva = PGROUNDDOWN(v->start + len);
+      v->start += len;
+      v->offset += endva - startva;
+    }
+  } else if (addr + len == v->end) {
+    startva = PGROUNDUP(addr);
+    endva = PGROUNDUP(v->end);
+    v->end -= len;
+  } else {
+    panic("munmap assumes will not punch a hole in the middle of mmap region");
+  }
+  uvmunmap(p->pagetable, startva, (endva-startva)/PGSIZE, 1);
+  return free;
+}
+
+int
+handle_page_fault(uint64 va) {
+  struct vma* v;
+  char *mem;
+  int idx;
+  if ((idx = vmalookup(va)) == -1)
+    return -1;
+  v = myproc()->vmas[idx];
+  mem = kalloc();
+  ilock(v->f->ip);
+  readi(v->f->ip, 0, (uint64)mem, v->offset + (va - v->start), PGSIZE);
+  iunlock(v->f->ip);
+  // call mappages to map page to va
+  if (mappages(myproc()->pagetable, va, PGSIZE, (uint64)mem, v->perm | PTE_U) != 0) {
+    kfree(mem);
+    return -1;
+  }
+  return 0;
+}
 
 void
 fileinit(void)

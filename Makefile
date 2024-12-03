@@ -197,6 +197,11 @@ UPROGS += \
 	$U/_stats
 endif
 
+ifeq ($(LAB), mmap)
+UPROGS += \
+	$U/_mmaptest
+endif
+
 ifeq ($(LAB),traps)
 UPROGS += \
 	$U/_call\
